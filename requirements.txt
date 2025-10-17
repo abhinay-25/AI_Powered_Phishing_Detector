@@ -7,3 +7,4 @@ xgboost
 streamlit
 flask
 joblib
+tldextract

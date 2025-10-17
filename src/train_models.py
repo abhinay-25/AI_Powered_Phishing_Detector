@@ -14,7 +14,13 @@ from sklearn.metrics import (
     classification_report,
     confusion_matrix,
     f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+    RocCurveDisplay,
 )
+import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
@@ -79,19 +85,37 @@ def train_and_evaluate(X: pd.DataFrame, y: pd.Series, random_state: int = 42):
         y_pred = model.predict(X_test_scaled)
         acc = accuracy_score(y_test, y_pred)
         f1 = f1_score(y_test, y_pred, average="weighted")
+        prec = precision_score(y_test, y_pred, average="weighted", zero_division=0)
+        rec = recall_score(y_test, y_pred, average="weighted", zero_division=0)
+        try:
+            # For ROC-AUC we need probability estimates; fall back to 0 if not available
+            if hasattr(model, "predict_proba"):
+                y_proba = model.predict_proba(X_test_scaled)[:, 1]
+                roc_auc = roc_auc_score(y_test, y_proba)
+            else:
+                roc_auc = None
+        except Exception:
+            roc_auc = None
         cm = confusion_matrix(y_test, y_pred)
         cr = classification_report(y_test, y_pred, output_dict=True)
 
         reports[name] = {
             "accuracy": acc,
             "f1_weighted": f1,
+            "precision_weighted": prec,
+            "recall_weighted": rec,
+            "roc_auc": roc_auc,
             "confusion_matrix": cm.tolist(),
             "classification_report": cr,
         }
 
         print(f"=== {name} ===")
         print("Accuracy:", acc)
+        print("Precision (weighted):", prec)
+        print("Recall (weighted):", rec)
         print("F1 (weighted):", f1)
+        if roc_auc is not None:
+            print("ROC-AUC:", roc_auc)
         print("Confusion Matrix:\n", cm)
         print("Classification Report:\n", classification_report(y_test, y_pred))
         print("\n" + "-" * 60 + "\n")
@@ -106,6 +130,8 @@ def train_and_evaluate(X: pd.DataFrame, y: pd.Series, random_state: int = 42):
 
 def save_artifacts(best_name: str, model, scaler, reports: dict, out_dir: str = "models"):
     os.makedirs(out_dir, exist_ok=True)
+    reports_dir = os.path.join(out_dir, "reports")
+    os.makedirs(reports_dir, exist_ok=True)
 
     model_path = os.path.join(out_dir, "phishing_detector_model.pkl")
     scaler_path = os.path.join(out_dir, "scaler.pkl")
@@ -127,6 +153,31 @@ def save_artifacts(best_name: str, model, scaler, reports: dict, out_dir: str = 
     print(f"Saved best model: {best_name} -> {model_path}")
     print(f"Saved scaler -> {scaler_path}")
     print(f"Saved metrics -> {metrics_path}")
+
+    # Save a simple metrics table as CSV for easy comparison
+    import pandas as pd
+    rows = []
+    for m, r in reports.items():
+        rows.append({
+            "model": m,
+            "accuracy": r.get("accuracy"),
+            "precision_weighted": r.get("precision_weighted"),
+            "recall_weighted": r.get("recall_weighted"),
+            "f1_weighted": r.get("f1_weighted"),
+            "roc_auc": r.get("roc_auc"),
+        })
+    df = pd.DataFrame(rows)
+    df.to_csv(os.path.join(reports_dir, "metrics_table.csv"), index=False)
+    print(f"Saved metrics table -> {os.path.join(reports_dir, 'metrics_table.csv')}")
+
+    # Bar plot comparison
+    plt.figure(figsize=(9, 5))
+    sns.barplot(x="model", y="f1_weighted", data=df)
+    plt.xticks(rotation=30, ha="right")
+    plt.tight_layout()
+    plt.savefig(os.path.join(reports_dir, "f1_comparison.png"))
+    plt.close()
+    print(f"Saved F1 comparison plot -> {os.path.join(reports_dir, 'f1_comparison.png')}")
 
 
 def parse_args(argv=None):
