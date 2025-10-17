@@ -12,16 +12,21 @@ from .features import url_features, email_features
 def load_artifacts(models_dir: str = "models"):
     model_path = os.path.join(models_dir, "phishing_detector_model.pkl")
     scaler_path = os.path.join(models_dir, "scaler.pkl")
+    feature_cols_path = os.path.join(models_dir, "feature_columns.json")
     if not os.path.exists(model_path) or not os.path.exists(scaler_path):
         raise FileNotFoundError("Model/scaler not found. Train first.")
+    if not os.path.exists(feature_cols_path):
+        raise FileNotFoundError("feature_columns.json not found. Retrain with the updated training script.")
     model = joblib.load(model_path)
     scaler = joblib.load(scaler_path)
-    return model, scaler
+    with open(feature_cols_path, "r", encoding="utf-8") as f:
+        feature_columns = json.load(f)
+    return model, scaler, feature_columns
 
 
-def predict_url(url: str, model, scaler):
+def predict_url(url: str, model, scaler, feature_columns):
     feats = url_features(url)
-    X = pd.DataFrame([feats])
+    X = pd.DataFrame([[feats.get(c, 0) for c in feature_columns]], columns=feature_columns)
     X_scaled = scaler.transform(X)
     pred = model.predict(X_scaled)[0]
     prob = (
@@ -30,9 +35,9 @@ def predict_url(url: str, model, scaler):
     return int(pred), prob, feats
 
 
-def predict_email(subject: str, body: str, model, scaler):
+def predict_email(subject: str, body: str, model, scaler, feature_columns):
     feats = email_features(subject, body)
-    X = pd.DataFrame([feats])
+    X = pd.DataFrame([[feats.get(c, 0) for c in feature_columns]], columns=feature_columns)
     X_scaled = scaler.transform(X)
     pred = model.predict(X_scaled)[0]
     prob = (
@@ -49,14 +54,14 @@ def main():
     ap.add_argument("--body", type=str, help="Email body")
     args = ap.parse_args()
 
-    model, scaler = load_artifacts()
+    model, scaler, feature_columns = load_artifacts()
 
     if args.mode == "url":
         if not args.url:
             raise SystemExit("--url is required when --mode url")
-        pred, prob, feats = predict_url(args.url, model, scaler)
+        pred, prob, feats = predict_url(args.url, model, scaler, feature_columns)
     else:
-        pred, prob, feats = predict_email(args.subject or "", args.body or "", model, scaler)
+        pred, prob, feats = predict_email(args.subject or "", args.body or "", model, scaler, feature_columns)
 
     label = "Phishing" if pred == 1 else "Legitimate"
     print(json.dumps({"label": label, "prob": prob, "features": feats}, indent=2))

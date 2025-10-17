@@ -5,6 +5,8 @@ matplotlib
 seaborn
 xgboost
 streamlit
-flask
 joblib
 tldextract
+imbalanced-learn
+shap
+flask

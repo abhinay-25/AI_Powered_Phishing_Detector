@@ -125,10 +125,10 @@ def train_and_evaluate(X: pd.DataFrame, y: pd.Series, random_state: int = 42):
             best_name = name
             best_model = model
 
-    return best_name, best_model, scaler, reports
+    return best_name, best_model, scaler, reports, list(X.columns)
 
 
-def save_artifacts(best_name: str, model, scaler, reports: dict, out_dir: str = "models"):
+def save_artifacts(best_name: str, model, scaler, reports: dict, feature_columns, out_dir: str = "models"):
     os.makedirs(out_dir, exist_ok=True)
     reports_dir = os.path.join(out_dir, "reports")
     os.makedirs(reports_dir, exist_ok=True)
@@ -136,6 +136,7 @@ def save_artifacts(best_name: str, model, scaler, reports: dict, out_dir: str = 
     model_path = os.path.join(out_dir, "phishing_detector_model.pkl")
     scaler_path = os.path.join(out_dir, "scaler.pkl")
     metrics_path = os.path.join(out_dir, "metrics.json")
+    feature_cols_path = os.path.join(out_dir, "feature_columns.json")
 
     joblib.dump(model, model_path)
     joblib.dump(scaler, scaler_path)
@@ -146,13 +147,18 @@ def save_artifacts(best_name: str, model, scaler, reports: dict, out_dir: str = 
         "saved_scaler_path": scaler_path,
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "reports": reports,
+        "feature_columns_path": feature_cols_path,
     }
     with open(metrics_path, "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
 
+    with open(feature_cols_path, "w", encoding="utf-8") as f:
+        json.dump(feature_columns, f, indent=2)
+
     print(f"Saved best model: {best_name} -> {model_path}")
     print(f"Saved scaler -> {scaler_path}")
     print(f"Saved metrics -> {metrics_path}")
+    print(f"Saved feature columns -> {feature_cols_path}")
 
     # Save a simple metrics table as CSV for easy comparison
     import pandas as pd
@@ -211,11 +217,11 @@ def main(argv=None):
     df = load_dataset(args.data)
     X, y = split_features_target(df)
 
-    best_name, best_model, scaler, reports = train_and_evaluate(
+    best_name, best_model, scaler, reports, feature_columns = train_and_evaluate(
         X, y, random_state=args.random_state
     )
 
-    save_artifacts(best_name, best_model, scaler, reports, out_dir=args.out_dir)
+    save_artifacts(best_name, best_model, scaler, reports, feature_columns, out_dir=args.out_dir)
 
 
 if __name__ == "__main__":
